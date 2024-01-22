@@ -1,0 +1,134 @@
+### Install Coltron into a Docker container   01102023
+#########################################################################################################
+
+docker pull ubuntu:18.04
+docker images
+docker run -it ubuntu:18.04 /bin/bash
+apt-get update
+apt-get upgrade
+
+### Install bamliquidator
+apt-get -y install software-properties-common
+add-apt-repository -y ppa:bradner-computation/pipeline
+apt-get install bamliquidator
+apt-get update
+#exit
+#docker ps -a
+#docker commit 2ac969409c51 katreya/bamliquidator
+#docker push katreya/bamliquidator
+
+
+### Coltron wants the 4.91 version of FIMO (4.9.1?) - Install MEME Suite 4.9.1 patched
+# From https://github.com/steuernb/NLR-Annotator/issues/3
+# To get meme 4.9.1 to compile you need to change the following according to Charles E Grant cegrant@uw.edu Thanks!.
+# If you have to use version 4.9.1, then the easiest fix is to change the definition of report_external_failure in glam2_glam2.c (line 148) from
+# inline void report_external_failure(const char *prog, int status) {
+# to
+# static inline void report_external_failure(const char *prog, int status) {
+
+docker pull katreya/bamliquidator:latest 
+docker run -it katreya/bamliquidator /bin/bash
+apt-get update
+apt-get upgrade
+cd ~
+wget https://meme-suite.org/meme/meme-software/4.9.1/meme_4.9.1_2.tar.gz
+tar -xvzf meme_4.9.1_2.tar.gz
+cd meme_4.9.1
+# modify src/ glam2_glam2.c with the change mentioned above.
+apt-get -y install libexpat-dev libxml2-dev libssl-dev ghostscript imagemagick libxslt-dev zip
+cpanm HTML::Template
+cpanm Math::CDF
+cpanm --force Net::HTTP
+cpanm XML::Simple
+cpanm XML::Parser::Expat
+cpanm CGI
+cpanm CGI::Carp
+cpanm LWP::UserAgent
+cpanm SOAP::Lite
+cpanm SOAP::WSDL
+cpanm WWW::Mechanize
+./configure --prefix=/opt/meme --with-gs=/usr/bin/ghostscript --with-db=/opt/meme/db
+make
+make test
+make install
+# export PATH=/opt/meme/bin:/opt/meme/libexec/meme:$PATH
+cd ~
+wget https://meme-suite.org/meme/meme-software/Databases/motifs/motif_databases.12.23.tgz
+wget https://meme-suite.org/meme/meme-software/Databases/gomo/gomo_databases.3.2.tgz
+wget https://meme-suite.org/meme/meme-software/Databases/tgene/tgene_databases.1.0.tgz
+tar -xvzf motif_databases.12.23.tgz
+tar -xvzf gomo_databases.3.2.tgz
+tar -xvzf tgene_databases.1.0.tgz
+mv -v gomo_databases /opt/meme/db/gomo_databases
+mv -v motif_databases /opt/meme/db/motif_databases
+mv -v tgene_databases /opt/meme/db/tgene_databases
+
+### Install Coltron
+pip install coltron
+coltron-get-data
+rm /usr/local/lib/python2.7/dist-packages/coltron/data/genome/hg18/*.gz
+rm /usr/local/lib/python2.7/dist-packages/coltron/data/genome/hg19/*.gz
+rm /usr/local/lib/python2.7/dist-packages/coltron/data/genome/mm9/*.gz
+pip uninstall networkx  
+pip install networkx==1.8.1
+
+# In another terminal tab do:
+docker ps   # Our container has ID = 6eb6345913d0
+docker cp for_coltron_update.zip 6eb6345913d0:/root/for_coltron_update.zip
+docker cp RH4_K27ac_HiChIP_Dovetail.bam   6eb6345913d0:/root/RH4_K27ac_HiChIP_Dovetail.bam
+docker cp RH4_K27ac_HiChIP_Dovetail.bam.bai   6eb6345913d0:/root/RH4_K27ac_HiChIP_Dovetail.bam.bai
+docker cp RH4_K27ac_HiChIP_Dovetail_AllEnhancers.table.txt   6eb6345913d0:/root/RH4_K27ac_HiChIP_Dovetail_AllEnhancers.table.txt
+docker cp networkScatter.R  6eb6345913d0:/root/networkScatter.R
+
+cd /usr/local/lib/python2.7/dist-packages/coltron/
+cp crc.py crc.py.original
+cd data/annotation
+cp TFlist_NMid_hg19.txt TFlist_NMid_hg19.txt.original
+cp TFlist_NMid_mm9.txt TFlist_NMid_mm9.txt.original
+cp hg18_refseq.ucsc hg18_refseq.ucsc.original
+cp hg19_refseq.ucsc hg19_refseq.ucsc.original
+cp mm9_refseq.ucsc mm9_refseq.ucsc.original
+cd ~
+unzip for_coltron_update.zip
+cd /root/for_coltron_update
+cp -v TFlist_NMid_* *.ucsc /usr/local/lib/python2.7/dist-packages/coltron/data/annotation/
+chmod 755 /usr/local/lib/python2.7/dist-packages/coltron/data/annotation/*
+cp -vR mm10 /usr/local/lib/python2.7/dist-packages/coltron/data/genome/mm10
+cp -vR hg38 /usr/local/lib/python2.7/dist-packages/coltron/data/genome/hg38
+cp -v crc.berkley.update_kat_010923.py /usr/local/lib/python2.7/dist-packages/coltron/crc.py
+mkdir /opt/scripts
+cp networkScatter.R /opt/scripts/
+
+### Install R 4.3.2
+apt-get install libcurl4-openssl-dev
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E298A3A825C0D65DFD57CBB651716619E084DAB9
+add-apt-repository 'deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran40/'
+apt update
+apt install r-base
+update.packages(checkBuilt=TRUE, ask=FALSE)   # installing ggplot2 might fail after initial R install so try this
+# Then install ggplot2 for R - install.packages("ggplot2")
+
+
+# cd /root/
+# mkdir test
+# coltron -e RH4_K27ac_HiChIP_Dovetail_AllEnhancers.table.txt -b RH4_K27ac_HiChIP_Dovetail.bam -g HG38 -o test/ -n test -d 1000000 -x 0   # IT WORKS!
+# Now remove all downloaded files in /root
+
+# exit
+# docker ps -a
+# docker commit 6eb6345913d0 katreya/coltron:v1
+# docker push katreya/coltron:v1
+
+### Had to add PATH via Dockerfile since I was having trouble setting it globally:
+# Make a new Dockerfile document and add to it...
+# FROM katreya/coltron:v1
+# ENV PATH="$PATH:/opt/meme/bin:/opt/meme/libexec/meme"
+docker build -t katreya/coltron:v2 .
+
+docker run -v /home/katreya:/home/katreya katreya/coltron:v2 coltron -e /home/katreya/RH4_K27ac_HiChIP_Dovetail_AllEnhancers.table.txt -b /home/katreya/RH4_K27ac_HiChIP_Dovetail.bam -g HG38 -o /home/katreya/test/ -n test -d 1000000 -x 0
+
+docker push katreya/coltron:v2
+
+# I added some text to crc.py regarding genome builds coltron now supports, committed to katreya/coltron:v3, and then pushed to the hub.
+
+
